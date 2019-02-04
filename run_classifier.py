@@ -25,6 +25,7 @@ import modeling
 import optimization
 import tokenization
 import tensorflow as tf
+import numpy
 
 flags = tf.flags
 
@@ -251,6 +252,68 @@ class XnliProcessor(DataProcessor):
     """See base class."""
     return ["contradiction", "entailment", "neutral"]
 
+
+class QueryIntentionProcessor(DataProcessor):
+  def train_test_split(self, X, Y, test_size=0.1):
+    """
+    implementation of train test split with shuffling and test portion
+    data must be in memory
+    """
+    assert len(X) == len(Y), "Data and label must have same size"
+    assert test_size < 1.0, "Splitting portion must be between 0 and 1.0, instead got {}".format(test_size)
+    idxs = list(range(0, len(X)))
+    numpy.random.shuffle(idxs)
+    split_at = int(test_size*len(X))
+    idxs_l, idxs_r = idxs[split_at:], idxs[:split_at]
+    return X[idxs_l], X[idxs_r], Y[idxs_l], Y[idxs_r]
+
+  def __init__(self, data_dir=FLAGS.data_dir):
+    self.language="en"
+    lines = self._read_tsv(
+        os.path.join(data_dir, "intention.tsv"))
+    xs = numpy.array([x[0] for x in lines])
+    labels = numpy.array([x[1].lower() for x in lines])
+    X_, self.tests, Y_,  self.test_labels=self.train_test_split(xs, labels, 0.1)
+    self.trains, self.devs, self.train_labels, self.dev_labels =self.train_test_split(X_, Y_, 0.1)
+
+  def get_train_examples(self, data_dir):
+    examples = []
+    for i, (line, label) in enumerate(zip(self.trains, self.train_labels)):
+      if i == 0:
+        continue
+      guid = "train-%d" % (i)
+      text_a = tokenization.convert_to_unicode(line)
+      label = tokenization.convert_to_unicode(label)
+      examples.append(
+          InputExample(guid=guid, text_a=text_a, label=label))
+    return examples
+  
+  def get_dev_examples(self, data_dir):
+    examples = []
+    for i, (line, label) in enumerate(zip(self.devs, self.dev_labels)):
+      if i == 0:
+        continue
+      guid = "dev-%d" % (i)
+      text_a = tokenization.convert_to_unicode(line)
+      label = tokenization.convert_to_unicode(label)
+      examples.append(
+          InputExample(guid=guid, text_a=text_a, label=label))
+    return examples
+
+  def get_test_examples(self, data_dir):
+    examples = []
+    for i, (line, label) in enumerate(zip(self.tests, self.test_labels)):
+      if i == 0:
+        continue
+      guid = "test-%d" % (i)
+      text_a = tokenization.convert_to_unicode(line)
+      label = tokenization.convert_to_unicode(label)
+      examples.append(
+          InputExample(guid=guid, text_a=text_a, label=label))
+    return examples
+  
+  def get_labels(self):
+    return ["ambiguous", "company", "jobs", "oos", "people"]
 
 class MnliProcessor(DataProcessor):
   """Processor for the MultiNLI data set (GLUE version)."""
@@ -788,6 +851,7 @@ def main(_):
       "mnli": MnliProcessor,
       "mrpc": MrpcProcessor,
       "xnli": XnliProcessor,
+      "qi": QueryIntentionProcessor,
   }
 
   tokenization.validate_case_matches_checkpoint(FLAGS.do_lower_case,
